@@ -1,0 +1,298 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JAGO WEREWOLF</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ background:#101116;
+ color:white;
+ font-family:Arial,sans-serif;
+ text-align:center;
+ padding:20px;
+}
+.container{
+ max-width:500px;
+ margin:auto;
+}
+.card{
+ background:#20212a;
+ border:1px solid #444;
+ border-radius:16px;
+ padding:20px;
+ margin:15px 0;
+}
+h1{color:#f32637;font-size:32px}
+input{
+ width:100%;
+ padding:14px;
+ margin:7px 0;
+ border-radius:10px;
+ border:1px solid #555;
+ background:#111;
+ color:white;
+ font-size:16px;
+}
+button{
+ width:100%;
+ padding:14px;
+ margin:6px 0;
+ border:0;
+ border-radius:10px;
+ background:#ed2638;
+ color:white;
+ font-weight:bold;
+ font-size:15px;
+}
+.secondary{background:#383943}
+.player{
+ padding:12px;
+ margin:7px 0;
+ background:#30313b;
+ border-radius:9px;
+}
+.code{
+ font-size:32px;
+ color:#ff4657;
+ letter-spacing:5px;
+ font-weight:bold;
+}
+.hidden{display:none}
+small{color:#aaa}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>JAGO WEREWOLF</h1>
+<p>THE NIGHT SHIFT</p>
+<p>🐺 Cari Fraud, Selamatkan Tim!</p>
+
+<div class="card" id="login">
+<h3>MASUK PERMAINAN</h3>
+
+<input id="nama" placeholder="Nama karyawan">
+
+<button onclick="buatRoom()">BUAT ROOM</button>
+
+<input id="kode" placeholder="Kode room">
+
+<button class="secondary" onclick="gabungRoom()">
+GABUNG ROOM
+</button>
+</div>
+
+<div class="card hidden" id="lobby">
+<h2>LOBBY JAGO</h2>
+<p>KODE ROOM</p>
+<div class="code" id="kodeTampil"></div>
+
+<p id="jumlah"></p>
+<div id="daftar"></div>
+
+<button id="mulai" onclick="mulaiGame()">
+MULAI GAME
+</button>
+</div>
+
+<div class="card hidden" id="game">
+<h2>PERMAINAN DIMULAI</h2>
+<h3 id="peran">Memuat peran...</h3>
+<p id="deskripsi"></p>
+<div id="status"></div>
+<div id="aksi"></div>
+</div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+
+<script>
+
+// FIREBASE JAGO
+
+const firebaseConfig = {
+ apiKey:"AIzaSyAK7BFD2Am7fLlTDdJ2bwol7rWpLkHKy7M",
+ authDomain:"jago-99b4c.firebaseapp.com",
+ databaseURL:"https://jago-99b4c-default-rtdb.asia-southeast1.firebasedatabase.app",
+ projectId:"jago-99b4c",
+ storageBucket:"jago-99b4c.firebasestorage.app",
+ messagingSenderId:"702429431809",
+ appId:"1:702429431809:web:9d8f84681ed30058405800",
+ measurementId:"G-HLCLN5Q35P"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth=firebase.auth();
+const db=firebase.database();
+
+let uid=null;
+let room=null;
+let host=false;
+
+auth.signInAnonymously().then(user=>{
+ uid=user.user.uid;
+}).catch(e=>alert("Login gagal: "+e.message));
+
+function kodeAcak(){
+ return Math.random().toString(36)
+ .substring(2,8).toUpperCase();
+}
+
+function tampil(id){
+ document.getElementById("login").classList.add("hidden");
+ document.getElementById("lobby").classList.add("hidden");
+ document.getElementById("game").classList.add("hidden");
+ document.getElementById(id).classList.remove("hidden");
+}
+
+async function buatRoom(){
+
+ if(!uid)return alert("Tunggu koneksi Firebase.");
+
+ let nama=document.getElementById("nama").value.trim();
+ if(!nama)return alert("Masukkan nama.");
+
+ room=kodeAcak();
+ host=true;
+
+ await db.ref("rooms/"+room).set({
+  host:uid,
+  phase:"lobby",
+  status:"lobby",
+  players:{
+   [uid]:{
+    nama:nama,
+    energi:100,
+    hidup:true
+   }
+  }
+ });
+
+ masukRoom();
+}
+
+async function gabungRoom(){
+
+ if(!uid)return alert("Tunggu koneksi Firebase.");
+
+ let nama=document.getElementById("nama").value.trim();
+ let kode=document.getElementById("kode").value.trim().toUpperCase();
+
+ if(!nama||!kode)return alert("Lengkapi nama dan kode.");
+
+ let snap=await db.ref("rooms/"+kode).get();
+
+ if(!snap.exists())return alert("Room tidak ditemukan.");
+
+ if(snap.val().status!=="lobby")
+ return alert("Permainan sudah dimulai.");
+
+ room=kode;
+ host=false;
+
+ await db.ref("rooms/"+room+"/players/"+uid).set({
+  nama:nama,
+  energi:100,
+  hidup:true
+ });
+
+ masukRoom();
+}
+
+function masukRoom(){
+
+ tampil("lobby");
+
+ db.ref("rooms/"+room).on("value",snap=>{
+
+  if(!snap.exists())return;
+
+  let data=snap.val();
+  let pemain=data.players||{};
+
+  document.getElementById("kodeTampil").innerText=room;
+
+  document.getElementById("jumlah").innerText=
+  Object.keys(pemain).length+" PEMAIN";
+
+  document.getElementById("daftar").innerHTML=
+  Object.entries(pemain).map(([id,p])=>
+  `<div class="player">${p.nama} ${id===uid?"(Kamu)":""}</div>`
+  ).join("");
+
+  document.getElementById("mulai").style.display=
+  data.host===uid&&data.status==="lobby"?"block":"none";
+
+  if(data.status==="playing"){
+   tampil("game");
+   document.getElementById("status").innerText=
+   "RONDE "+data.round+" • "+data.phase;
+  }
+ });
+}
+
+// PEMBAGIAN JUMLAH FRAUD
+
+function jumlahFraud(n){
+ if(n<=7)return 1;
+ if(n<=12)return 2;
+ if(n<=17)return 3;
+ return 4;
+}
+
+async function mulaiGame(){
+
+ let snap=await db.ref("rooms/"+room).get();
+ let data=snap.val();
+ let ids=Object.keys(data.players||{});
+
+ if(ids.length<5)
+ return alert("Minimal 5 pemain!");
+
+ let fraud=jumlahFraud(ids.length);
+
+ let roles=[
+  ...Array(fraud).fill("FRAUD"),
+  "EAGLE","DM"
+ ];
+
+ while(roles.length<ids.length)
+ roles.push("JAGOAN");
+
+ roles.sort(()=>Math.random()-.5);
+
+ let updates={};
+
+ ids.forEach((id,i)=>{
+  updates["players/"+id+"/energi"]=100;
+  updates["players/"+id+"/hidup"]=true;
+  updates["roles/"+id]=roles[i];
+ });
+
+ updates.status="playing";
+ updates.phase="night";
+ updates.round=1;
+
+ await db.ref("rooms/"+room).update(updates);
+
+ tampil("game");
+ document.getElementById("peran").innerText=
+ "Game dimulai!";
+
+ document.getElementById("deskripsi").innerText=
+ "Periksa peran rahasia melalui sistem game.";
+}
+
+</script>
+</body>
+</html>
